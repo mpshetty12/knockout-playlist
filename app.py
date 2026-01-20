@@ -1,21 +1,16 @@
 import streamlit as st
+import math
 import re
 
 st.set_page_config(page_title="Knockout Fixtures", layout="centered")
 st.title("🏏 Leaderboard Knockout Fixture Generator (Sorted by Time)")
 
-st.write(
-    "Enter teams and their times in seconds, one per line.\n\n"
-    "Examples:\n"
-    "TEAM A , 12s\n"
-    "ತಂಡ ಉಡುಪಿ , 10.567s\n"
-    "TEAM C , 15.2\n"
-)
+st.write("Enter teams and their times in seconds, one per line, in the format: `TEAM NAME , 20s` or `TEAM NAME , 12.56s`")
 
 team_text = st.text_area(
     "Enter Teams & Times",
     height=350,
-    placeholder="TEAM 1 , 20s\nTEAM 2 , 10.56s\nTEAM 3 , 25\n..."
+    placeholder="TEAM A , 20s\nTEAM B , 10.55s\nTEAM C , 25s\n..."
 )
 
 # ------------------ UTIL FUNCTIONS ------------------
@@ -25,98 +20,96 @@ def next_power_of_two(n):
 
 def parse_teams_with_time(team_lines):
     teams = []
-
     for line in team_lines:
-        line = line.replace("\u200b", "").replace("\ufeff", "").strip()
-
+        line = line.strip()
         if not line:
             continue
 
-        if "," not in line:
+        if ',' not in line:
             st.warning(f"Invalid format: {line}")
             continue
 
-        name, time_part = line.split(",", 1)
+        name, time_part = line.split(',', 1)
         name = name.strip()
 
+        # extract number from time (supports decimals)
         match = re.search(r"(\d+(\.\d+)?)", time_part)
-
         if not match:
             st.warning(f"Invalid time for team: {name}")
             continue
 
-        try:
-            time_val = float(match.group(1))
-            teams.append((name, time_val))
-        except:
-            st.warning(f"Invalid time for team: {name}")
+        time = float(match.group(1))
+        teams.append((name, time))
 
     return teams
 
-# ------------------ FIXTURE GENERATION ------------------
+# ------------------ FIXTURE GENERATOR ------------------
 
 def generate_knockout(teams_with_time):
-
-    # sort by time
+    # Sort by fastest time
     teams_with_time.sort(key=lambda x: x[1])
 
-    # ---------- SHOW SORTED TEAMS IN TEXT BOX ----------
-    sorted_text = "\n".join([f"{name} , {time:.5f}s" for name, time in teams_with_time])
+    # ---------- SHOW SORTED LIST ----------
+    sorted_text = "\n".join(
+        [f"{i+1}. {name} , {time}s" for i, (name, time) in enumerate(teams_with_time)]
+    )
 
     st.subheader("✅ Sorted Teams (Fastest First)")
 
     line_count = len(teams_with_time)
-    auto_height = min(800, line_count * 28 + 50)  # adjust max if needed
+    auto_height = min(1200, line_count * 28 + 60)
 
     st.text_area(
-        "You can copy or verify this list",
+        "You can copy this sorted list",
         value=sorted_text,
         height=auto_height,
         disabled=True
     )
 
-    st.divider()
-
-    # ---------- FIXTURES ----------
     teams = [t[0] for t in teams_with_time]
 
     total_teams = len(teams)
     next_power2 = next_power_of_two(total_teams)
     total_byes = next_power2 - total_teams
 
-    st.subheader("🏁 ROUND 1")
+    st.subheader("🏁 Round 1")
+
     round_teams = []
     match_no = 1
-    i = 0
 
-    while i < total_teams:
-        if total_byes > 0:
-            st.write(f"{teams[i]} ➜ BYE")
-            round_teams.append(teams[i])
-            total_byes -= 1
-            i += 1
+    # -------- GROUP BYES --------
+    bye_teams = teams[:total_byes]
+    play_teams = teams[total_byes:]
+
+    if total_byes > 0:
+        bye_list = ", ".join(bye_teams)
+        st.success(f"✅ Top {total_byes} teams directly qualified to Round 2:\n{bye_list}")
+
+    round_teams.extend(bye_teams)
+
+    # -------- MATCHES --------
+    i = 0
+    while i < len(play_teams):
+        if i + 1 < len(play_teams):
+            st.write(f"Match {match_no}: {play_teams[i]} vs {play_teams[i+1]}")
+            round_teams.append(f"Winner of Match {match_no}")
+            match_no += 1
+            i += 2
         else:
-            if i + 1 < total_teams:
-                st.write(f"Match {match_no}: {teams[i]} vs {teams[i+1]}")
-                round_teams.append(f"Winner of Match {match_no}")
-                match_no += 1
-                i += 2
-            else:
-                st.write(f"{teams[i]} ➜ BYE")
-                round_teams.append(teams[i])
-                i += 1
+            round_teams.append(play_teams[i])
+            i += 1
 
     teams = round_teams
     round_no = 2
 
+    # -------- NEXT ROUNDS --------
     while len(teams) > 1:
-
         if len(teams) == 2:
             round_name = "🏆 FINAL"
         elif len(teams) == 4:
-            round_name = "🥉 SEMI FINAL"
+            round_name = "🔥 SEMIFINAL"
         elif len(teams) == 8:
-            round_name = "🏏 QUARTER FINAL"
+            round_name = "⚡ QUARTERFINAL"
         else:
             round_name = f"ROUND {round_no}"
 
@@ -132,16 +125,15 @@ def generate_knockout(teams_with_time):
                 match_no += 1
                 i += 2
             else:
-                st.write(f"{teams[i]} ➜ BYE")
                 next_round.append(teams[i])
                 i += 1
 
         teams = next_round
         round_no += 1
 
-    st.success(f"🏆 CHAMPION: {teams[0]}")
+    st.success(f"🏆 Champion: {teams[0]}")
 
-# ------------------ MAIN BUTTON ------------------
+# ------------------ MAIN ------------------
 
 if st.button("Generate Fixtures"):
     team_lines = team_text.split("\n")
