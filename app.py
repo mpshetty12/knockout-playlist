@@ -1,17 +1,16 @@
 import streamlit as st
 import re
 
-# ---------------- PAGE ----------------
 st.set_page_config(page_title="Seeded Knockout Fixtures", layout="centered")
 st.title("🏏 Seeded Knockout Fixture Generator (Leaderboard Based)")
 
 st.write("Enter teams and times in seconds (fastest = Rank 1)")
-st.write("Format:  TEAM NAME , 12.56s")
+st.write("Format: TEAM NAME , 12.56s")
 
 team_text = st.text_area(
     "Enter Teams & Times (one per line)",
-    height=350,
-    placeholder="TEAM 1 , 10.2s\nTEAM 2 , 11s\nTEAM 3 , 9.8s\nTEAM 4 , 13s"
+    height=300,
+    placeholder="TEAM A , 10.5s\nTEAM B , 12s\nTEAM C , 9.8s\nTEAM D , 14s"
 )
 
 # ---------------- UTIL ----------------
@@ -44,26 +43,25 @@ def parse_teams_with_time(team_lines):
     return teams
 
 def seeded_pairs(team_list):
-    """1 vs N, 2 vs N-1, ..."""
     pairs = []
-    i = 0
-    j = len(team_list) - 1
+    i, j = 0, len(team_list) - 1
     while i < j:
         pairs.append((team_list[i], team_list[j]))
         i += 1
         j -= 1
     return pairs
 
-# ---------------- FIXTURE LOGIC ----------------
+# ---------------- FIXTURE ----------------
 
 def generate_knockout(teams_with_time):
 
-    # sort leaderboard (fastest first)
+    # sort by fastest time
     teams_with_time.sort(key=lambda x: x[1])
 
+    # ----- SHOW LEADERBOARD -----
     st.subheader("🏁 Leaderboard (Fastest First)")
-    for i, (n, t) in enumerate(teams_with_time, start=1):
-        st.write(f"{i}. {n} — {t}s")
+    for i, (name, time) in enumerate(teams_with_time, start=1):
+        st.write(f"{i}. {name} — {time}s")
 
     teams = [t[0] for t in teams_with_time]
     match_no = 1
@@ -71,29 +69,30 @@ def generate_knockout(teams_with_time):
     total = len(teams)
     power2 = next_power_of_two(total)
 
-    # -------- ROUND 1 : BYE ROUND IF NEEDED --------
+    # ----- ROUND 1 WITH SEEDED BYES -----
     if total != power2:
         byes = power2 - total
-        st.subheader("ROUND 1 — BYE ROUND (Top Seeds Advance)")
+
+        st.subheader("ROUND 1 — BYE ROUND (SEEDED)")
 
         bye_teams = teams[:byes]
         play_teams = teams[byes:]
 
-        st.success(f"Top {byes} teams get BYE:")
+        st.write(f"Top {byes} teams get BYE:")
         st.write(", ".join(bye_teams))
 
         next_round = bye_teams.copy()
 
-        i = 0
-        while i < len(play_teams):
-            st.write(f"Match {match_no}: {play_teams[i]} vs {play_teams[i+1]}")
+        pairs = seeded_pairs(play_teams)
+
+        for a, b in pairs:
+            st.write(f"Match {match_no}: {a} vs {b}")
             next_round.append(f"Winner of Match {match_no}")
             match_no += 1
-            i += 2
 
         teams = next_round
 
-    # -------- SEEDED POWER-OF-2 ROUNDS --------
+    # ----- NEXT SEEDED ROUNDS -----
     round_no = 2
 
     while len(teams) > 1:
@@ -104,8 +103,6 @@ def generate_knockout(teams_with_time):
             round_name = "🔥 SEMIFINAL"
         elif len(teams) == 8:
             round_name = "⚡ QUARTERFINAL"
-        elif len(teams) == 16:
-            round_name = "ROUND OF 16"
         else:
             round_name = f"ROUND {round_no}"
 
